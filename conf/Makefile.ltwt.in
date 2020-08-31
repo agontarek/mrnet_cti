@@ -1,0 +1,171 @@
+#/****************************************************************************
+# * Copyright © 2003-2012 Dorian C. Arnold, Philip C. Roth, Barton P. Miller *
+# *                  Detailed MRNet usage rights in "LICENSE" file.          *
+# ****************************************************************************/
+# $Id: Makefile.in,v 1.14 2008/10/09 19:50:12 mjbrim Exp $
+
+ROOTDIR = @MRNET_ROOT@
+SRCDIR  = $(ROOTDIR)/src/lightweight
+
+PLATDIR = @PLATFORM_BUILD@
+BINDIR   = $(PLATDIR)/bin
+LIBDIR   = $(PLATDIR)/lib
+OBJDIR   = $(PLATDIR)/obj/ltwt
+DEPDIR   = $(PLATDIR)/depends/ltwt
+ILIBDIR  = @libdir@
+INSTALL_DATA = @INSTALL_DATA@
+
+
+mrnet_INCDIR = $(INCDIR)/mrnet_lightweight
+install_INCDIR = $(IINCDIR)/mrnet_lightweight
+
+VPATH = $(SRCDIR) $(ROOTDIR)/src
+
+TARGET           = $(LIBDIR)/libmrnet_lightweight.a.$(VERSION)
+TARGET_LOWFAT    = $(LIBDIR)/libmrnet_lightweight_r.a.$(VERSION)
+TARGET_SO        = $(LIBDIR)/libmrnet_lightweight.so.$(VERSION)
+TARGET_SO_LOWFAT = $(LIBDIR)/libmrnet_lightweight_r.so.$(VERSION)
+TARGET_SONAME        = libmrnet_lightweight.so.$(VERSION_MAJOR)
+TARGET_SONAME_LOWFAT = libmrnet_lightweight_r.so.$(VERSION_MAJOR)
+
+TARGET_SO_DEPLIBS        = -L$(LIBDIR) -lxplat_lightweight $(LIBS_LIGHTWEIGHT)
+TARGET_SO_LOWFAT_DEPLIBS = -L$(LIBDIR) -lxplat_lightweight_r $(LIBS_LOWFAT)
+
+TARGETS = $(TARGET)
+SO_LIST = $(TARGET_SO)
+
+install_libincdir = $(ILIBDIR)/mrnet-$(VERSION)/include
+
+ifeq ($(WANT_THREADSAFE_LTWT), yes)
+    TARGETS += $(TARGET_LOWFAT)
+endif
+
+ifeq ($(BUILD_SHARED_LIBS), yes)
+    TARGETS += $(TARGET_SO)
+    ifeq ($(WANT_THREADSAFE_LTWT), yes)
+        TARGETS += $(TARGET_SO_LOWFAT)
+        SO_LIST += $(TARGET_SO_LOWFAT)
+    endif
+endif 
+
+LTWT_SRCS = $(SRCDIR)/BackEndNode.c \
+            $(SRCDIR)/ChildNode.c \
+            $(SRCDIR)/DataElement.c \
+            $(SRCDIR)/Error.c \
+            $(SRCDIR)/Filter.c \
+	    $(SRCDIR)/FilterDefinitions.c \
+            $(SRCDIR)/Message.c \
+            $(SRCDIR)/Network.c \
+            $(SRCDIR)/NetworkTopology.c \
+            $(SRCDIR)/Packet.c \
+            $(SRCDIR)/PeerNode.c \
+            $(SRCDIR)/PerfDataEvent.c \
+            $(SRCDIR)/SerialGraph.c \
+            $(SRCDIR)/Stream.c \
+            $(SRCDIR)/utils_lightweight.c \
+            $(ROOTDIR)/src/byte_order.c \
+            $(ROOTDIR)/src/pdr.c \
+            $(ROOTDIR)/src/pdr_mem.c \
+            $(ROOTDIR)/src/pdr_sizeof.c
+
+ifeq ($(MRNET_OS), linux)
+    LTWT_SRCS += PerfDataSysEvent_linux.c
+else
+    LTWT_SRCS += PerfDataSysEvent_none.c
+endif
+
+LIBMRNET_HEADERS = $(wildcard $(mrnet_INCDIR)/*.h)
+INSTALL_HEADERS = $(addprefix $(install_INCDIR)/, $(notdir $(LIBMRNET_HEADERS)))
+
+LTWT_OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.c,%.o,$(notdir $(LTWT_SRCS))))
+LOWFAT_OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.c,%_r.o,$(notdir $(LTWT_SRCS))))
+LTWT_DEPS = $(addprefix $(DEPDIR)/, $(patsubst %.c,%.d,$(notdir $(LTWT_SRCS))))
+
+all: $(TARGETS)
+	$(INSTALL_LIB_LINKS) $(LIBDIR) libmrnet_lightweight $(VERSION_MAJOR) $(VERSION_MINOR) $(VERSION_REV)
+	if [ $(WANT_THREADSAFE_LTWT) = "yes" ] ; then \
+	    $(INSTALL_LIB_LINKS) $(LIBDIR) libmrnet_lightweight_r $(VERSION_MAJOR) $(VERSION_MINOR) $(VERSION_REV) ; \
+	fi
+
+sharedobj: $(SO_LIST)
+
+$(TARGET): $(LTWT_OBJS)
+	@echo Archiving `basename $@` ...
+	$(AR) $(ARFLAGS) $@ $^
+	$(RANLIB) $@
+
+$(TARGET_LOWFAT): $(LOWFAT_OBJS)
+	@echo Archiving `basename $@` ...
+	$(AR) $(ARFLAGS) $@ $^
+	$(RANLIB) $@
+
+$(TARGET_SO): $(LTWT_OBJS)
+	@echo Building `basename $@` ...
+	$(CC) -Wl,-soname,$(TARGET_SONAME) $(SOFLAGS) -o $@ $^ $(TARGET_SO_DEPLIBS)
+
+$(TARGET_SO_LOWFAT): $(LOWFAT_OBJS)
+	@echo Building `basename $@` ...
+	$(CC) -Wl,-soname,$(TARGET_SONAME_LOWFAT) $(SOFLAGS) -o $@ $^ $(TARGET_SO_LOWFAT_DEPLIBS)
+
+install-prep:
+	for dir in $(ILIBDIR) $(install_INCDIR) $(install_libincdir) ; do \
+	    if [ ! -d $$dir ] ; then \
+	        $(MKDIR_P) $$dir ; \
+	        chmod 755 $$dir ; \
+	    fi \
+	done
+
+$(INSTALL_HEADERS): $(install_INCDIR)/%: $(mrnet_INCDIR)/%
+	@echo Installing MRNet lightweight header $(<F)
+	$(INSTALL_DATA) $< $(@D)
+
+install: all install-prep $(INSTALL_HEADERS)
+	@echo Installing MRNet lightweight libraries
+	$(INSTALL) $(TARGETS) $(ILIBDIR)/
+	$(INSTALL_DATA) $(PLATDIR)/mrnet_config.h $(install_libincdir)/
+	$(INSTALL_LIB_LINKS) $(ILIBDIR) libmrnet_lightweight $(VERSION_MAJOR) $(VERSION_MINOR) $(VERSION_REV)
+	if [ $(WANT_THREADSAFE_LTWT) = "yes" ] ; then \
+	    $(INSTALL_LIB_LINKS) $(ILIBDIR) libmrnet_lightweight_r $(VERSION_MAJOR) $(VERSION_MINOR) $(VERSION_REV) ; \
+	fi
+
+clean:
+	for file in $(LTWT_DEPS) $(LTWT_OBJS) $(LOWFAT_OBJS) ; do \
+	    if [ -e $$file ] ; then $(RM) $$file ; fi ; \
+	done
+
+# pattern rules
+@VERBOSEMAKE@
+.SUFFIXES:
+.SUFFIXES: .c .o .d
+
+# add phony target to force serial build of lightweight backend.
+# this would not be needed if archive was built differently
+# -- and then we could build in parallel
+.NOTPARALLEL:
+
+$(DEPDIR)/%.d: %.c
+	@echo Building depends file `basename $@` ...
+	$(MAKEDEPENDS)  $< $(OBJDIR)/$*.o $@ $(INCLUDES_LIGHTWEIGHT)
+
+$(OBJDIR)/%.o: %.c
+	@echo Compiling `basename $@` ...
+	$(CC) $(CCFLAGS) -o $@ -c $<
+
+$(OBJDIR)/%_r.o: %.c
+	@echo Compiling `basename $@` ...
+	$(CC) $(CCFLAGS) -DMRNET_LTWT_THREADSAFE -o $@ -c $<
+
+$(DEPDIR)/%.d: $(ROOTDIR)/src/%.c
+	@echo Building depends file `basename $@` ...
+	$(MAKEDEPENDS)  $< $(OBJDIR)/$*.o $@ $(INCLUDES_LIGHTWEIGHT)
+
+$(OBJDIR)/%.o: $(ROOTDIR)/src/%.c
+	@echo Compiling `basename $@` ...
+	$(CC) $(CCFLAGS) -o $@ -c $<
+
+$(OBJDIR)/%_r.o: $(ROOTDIR)/src/%.c
+	@echo Compiling `basename $@` ...
+	$(CC) $(CCFLAGS) -DMRNET_LTWT_THREADSAFE -o $@ -c $<
+
+# make sure file dependencies are determiend and used
+-include $(LTWT_DEPS)
